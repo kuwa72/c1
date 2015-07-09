@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+temp=$(mktemp /tmp/cXXXXXX)
+
+{
+  echo '#include <stdio.h>'
+  echo 'int main(int argc, char *argv[]){'
+  echo $@
+  echo ';}'
+} >> $temp.c
+
+#cat $temp.c
+
+{
+  cc -o $temp.o $temp.c
+  $temp.o < /dev/stdin
+}
