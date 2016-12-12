@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
 
 function parseTemplate() {
+  IFS=''
   MODE=normal
   TEMPSTR=""
   VARNAME=""
 
   echo "$@"
-  grep -o . $1 | while read CHAR; do
-    case $MODE
+  grep -o . | while read CHAR; do
+    case $MODE in
       normal)
         if [ ${#CHAR} -eq 0 ]; then
           echo #
-        elif [ $CHAR = _ ]; then
+        elif [ "$CHAR" = _ ]; then
           MODE=open1
           TEMPSTR=$CHAR
         else
           echo -n "$CHAR"
         fi
-        fi
         ;;
       open1)
-        if [ ${#CHAR} -eq 0]; then
-          mode=normal
+        if [ ${#CHAR} -eq 0 ]; then
+          MODE=normal
           echo -n $TEMPSTR; TEMPSTR=""
           echo #
         elif [ $CHAR = _ ];then
@@ -34,20 +34,38 @@ function parseTemplate() {
         fi
         ;;
       open2)
-        if [ ${#CHAR} -eq 0]; then
-          mode=normal
-          echo -n $TEMPSTR; TEMPSTR=""
-          echo #
+        if [[ "$CHAR" =~ [a-zA-Z0-9-.:/] ]]; then
+          TEMPSTR="$TEMPSTR$CHAR"
+          VARNAME="$VARNAME$CHAR"
         elif [ $CHAR = _ ];then
           MODE=close1
           TEMPSTR="$TEMPSTR$CHAR"
-          VARNAME="$VARNAME$CHAR"
+        elif [ ${#CHAR} -eq 0 ]; then
+          mode=normal
+          echo -n $TEMPSTR; TEMPSTR=""
+          echo #
         else
           MODE=normal
           echo -n $TEMPSTR; TEMPSTR=""
         fi
         ;;
-        close1
+      close1)
+        if [[ $CHAR = _ ]]; then
+          # replace variable
+          MODE=normal
+          echo "replaced $VARNAME"
+          TEMPSTR=""
+        elif [["$CHAR" =~ [a-zA-Z0-9-.:/] ]]; then
+          # continue varname
+          MODE=open2
+          TEMPSTR="$TEMPSTR$CHAR"
+          VARNAME="$VARNAME_$CHAR"
+        else
+          #exit 1 #syntax error?
+          MODE=normal
+          echo "$TEMPSTR"; TEMPSTR=""
+        fi
+        ;;
     esac
   done
 }
@@ -68,7 +86,7 @@ int main(int argc, char *argv[])
 }
 DEFAULT_SOURCE_CODE
   fi
-} | sed "s/__BODY__/$(echo $@ | sed -e 's/&/\\&/g' | sed -e 's/\\/\\\\/g')/" > $temp.c
+} | parseTemplate |tee $temp.c
 
 #cat $temp.c
 
