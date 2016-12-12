@@ -1,17 +1,82 @@
 #!/usr/bin/env bash
 
+function parseTemplate() {
+  MODE=normal
+  TEMPSTR=""
+  VARNAME=""
+
+  echo "$@"
+  grep -o . $1 | while read CHAR; do
+    case $MODE
+      normal)
+        if [ ${#CHAR} -eq 0 ]; then
+          echo #
+        elif [ $CHAR = _ ]; then
+          MODE=open1
+          TEMPSTR=$CHAR
+        else
+          echo -n "$CHAR"
+        fi
+        fi
+        ;;
+      open1)
+        if [ ${#CHAR} -eq 0]; then
+          mode=normal
+          echo -n $TEMPSTR; TEMPSTR=""
+          echo #
+        elif [ $CHAR = _ ];then
+          MODE=open2
+          TEMPSTR="$TEMPSTR$CHAR"
+          VARNAME=""
+        else
+          MODE=normal
+          echo -n $TEMPSTR; TEMPSTR=""
+        fi
+        ;;
+      open2)
+        if [ ${#CHAR} -eq 0]; then
+          mode=normal
+          echo -n $TEMPSTR; TEMPSTR=""
+          echo #
+        elif [ $CHAR = _ ];then
+          MODE=close1
+          TEMPSTR="$TEMPSTR$CHAR"
+          VARNAME="$VARNAME$CHAR"
+        else
+          MODE=normal
+          echo -n $TEMPSTR; TEMPSTR=""
+        fi
+        ;;
+        close1
+    esac
+  done
+}
+
 temp=$(mktemp /tmp/cXXXXXX)
 
+template_name=~/.c1template
+
 {
-  echo '#include <stdio.h>'
-  echo 'int main(int argc, char *argv[]){'
-  echo $@
-  echo ';}'
-} >> $temp.c
+  if [ -f $template_name ]; then
+    cat $template_name
+  else
+    cat << DEFAULT_SOURCE_CODE
+#include <stdio.h>
+int main(int argc, char *argv[])
+{
+  __BODY__
+}
+DEFAULT_SOURCE_CODE
+  fi
+} | sed "s/__BODY__/$(echo $@ | sed -e 's/&/\\&/g' | sed -e 's/\\/\\\\/g')/" > $temp.c
 
 #cat $temp.c
 
 {
   cc -o $temp.o $temp.c
-  $temp.o < /dev/stdin
+  $temp.o
 }
+
+
+
+parseTemplate HOGE=aabbbccc HUGA=abcd
