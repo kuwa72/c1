@@ -1,97 +1,52 @@
 #!/usr/bin/env bash
 
-function parseTemplate() {
-  IFS=""
-  MODE=normal
-  TEMPSTR=""
-  VARNAME=""
-  eval "$@"
-
-  while read -n1 CHAR; do
-    case $MODE in
-      normal)
-        if [ ${#CHAR} -eq 0 ]; then
-          echo #
-        elif [ "$CHAR" = _ ]; then
-          MODE=open1
-          TEMPSTR="$CHAR"
-        else
-          echo -n "$CHAR"
-        fi
-        ;;
-      open1)
-        if [ ${#CHAR} -eq 0 ]; then
-          MODE=normal
-          echo -n $TEMPSTR; TEMPSTR=""
-          echo #
-        elif [ "$CHAR" = _ ];then
-          MODE=open2
-          TEMPSTR="$TEMPSTR$CHAR"
-          VARNAME=""
-        else
-          MODE=normal
-          echo -n $TEMPSTR; TEMPSTR=""
-        fi
-        ;;
-      open2)
-        if [[ "$CHAR" =~ [a-zA-Z0-9-] ]]; then
-          TEMPSTR="$TEMPSTR$CHAR"
-          VARNAME="$VARNAME$CHAR"
-        elif [ "$CHAR" = _ ];then
-          MODE=close1
-          TEMPSTR="$TEMPSTR$CHAR"
-        elif [ ${#CHAR} -eq 0 ]; then
-          mode=normal
-          echo -n $TEMPSTR; TEMPSTR=""
-          echo #
-        else
-          MODE=normal
-          echo -n $TEMPSTR; TEMPSTR=""
-        fi
-        ;;
-      close1)
-        if [[ "$CHAR" = _ ]]; then
-          # replace variable
-          MODE=normal
-          eval "echo -n \$$VARNAME"
-          TEMPSTR=""
-        elif [["$CHAR" =~ [a-zA-Z0-9-.:/] ]]; then
-          # continue varname
-          MODE=open2
-          TEMPSTR="$TEMPSTR$CHAR"
-          VARNAME="$VARNAME_$CHAR"
-        else
-          #exit 1 #syntax error?
-          MODE=normal
-          echo "$TEMPSTR"; TEMPSTR=""
-        fi
-        ;;
-    esac
-  done
+d() {
+  [ -n "$DEBUG" ]
+}
+debug() {
+  d && echo "${@}" > /dev/stderr
 }
 
-temp=$(mktemp /tmp/cXXXXXX)
+unset tmpfile
+unset template_name
+atexit() {
+  debug delete temporary
+  [[ -n "${tmpfile-}" ]] && rm -f "$tmpfile"
+}
+trap atexit EXIT
+trap 'trap - EXIT; atexit; exit -1' INT PIPE TERM
 
+tmpfile="$(mktemp /tmp/cXXXXXX).c"
 template_name=~/.c1template
 
-{
-  if [ -f $template_name ]; then
-    cat $template_name
-  else
-    cat << DEFAULT_SOURCE_CODE
+if [ -f "$template_name" ]; then
+  tpl=$(cat $template_name)
+  debug read template
+else
+  tpl=$(cat <<DEFAULT_SOURCE_CODE
 #include <stdio.h>
 int main(int argc, char *argv[])
 {
-  __BODY__
+  \${@};
 }
 DEFAULT_SOURCE_CODE
-  fi
-} | parseTemplate BODY=$(printf "%q" "$@") > $temp.c
+)
+  debug use default template
+fi
 
-#cat $temp.c
+debug template is...
+debug "${tpl}"
 
-{
-  cc -o $temp.o $temp.c
-  $temp.o
-}
+tpld=$(cat <<OUTER
+cat <<EOF
+${tpl}
+EOF
+OUTER
+)
+eval "${tpld}" > $tmpfile
+
+debug source code is...
+d && cat $tmpfile > /dev/stderr
+
+cc -o $tmpfile.o $tmpfile && $tmpfile.o
 
